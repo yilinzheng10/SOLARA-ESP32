@@ -25,12 +25,11 @@ const int closedDegree = 90;
 
 
 void startSunTracking() {
-  sunTrackingTicker.attach(60, updateSunPosition); // Call updateSunPosition every 60 seconds
+  sunTrackingTicker.attach(60, updateSunPosition); 
 }
 
 void stopSunTracking() {
-  sunTrackingTicker.detach(); // Stop the timer
-}
+  sunTrackingTicker.detach(); 
 
 // Root route handler
 void handleRoot() {
@@ -56,7 +55,7 @@ void positionOpen() {
   currentMode = "Open";
   myservo.write(180);
   currentDegree = 180;
-  server.send(200, "text/plain", "Servo is 180 degrees");  // Fix response to reflect actual position
+  server.send(200, "text/plain", "Servo is 180 degrees");  
 }
 
 void positionManual(int degree) {
@@ -85,25 +84,22 @@ void getMode() {
 }
 
 void getCurrentDegree() {
-  String degreeString = String(currentDegree); // Convert int to String
-  server.send(200, "text/plain", degreeString); // Send the string
-  Serial.println(currentDegree); // This remains unchanged, as Serial.print can handle int
+  String degreeString = String(currentDegree); 
+  server.send(200, "text/plain", degreeString); 
+  Serial.println(currentDegree); 
 }
 
 int calculateSunPosition() {
-  unsigned long epochTime = timeClient.getEpochTime(); // Get time in seconds since epoch
-  
-  // Cast to time_t (since ESP32 uses 64-bit time_t)
+  unsigned long epochTime = timeClient.getEpochTime();
+
   time_t time = (time_t)epochTime;
-  struct tm* timeinfo = localtime(&time); // Convert to local time
+  struct tm* timeinfo = localtime(&time); 
   int hour = timeinfo->tm_hour;
   int minute = timeinfo->tm_min;
 
-  // Calculate the sun position based on the hour and minute
   const int totalMinutesInDay = 12 * 60; // 720 minutes (6 AM to 6 PM)
   int currentMinutesInDay = (hour - 6) * 60 + minute;
 
-  // Ensure currentMinutesInDay is within bounds
   if (currentMinutesInDay < 0) currentMinutesInDay = 0;
   if (currentMinutesInDay > totalMinutesInDay) currentMinutesInDay = totalMinutesInDay;
 
@@ -125,11 +121,10 @@ void updateSunPosition() {
 }
 
 void setup() {
-  Serial.begin(115200); // Start Serial communication for debugging
-  pinMode(2, OUTPUT); // Set GPIO2 as output
-  digitalWrite(2, HIGH); // Turn off the LED initially
+  Serial.begin(115200); 
+  pinMode(2, OUTPUT); 
+  digitalWrite(2, HIGH); 
 
-  // Connect to WiFi
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
@@ -143,14 +138,13 @@ void setup() {
   timeClient.setTimeOffset(timeOffset);
   timeClient.update();
 
- // Define routes for the web server
   server.on("/", HTTP_GET, handleRoot);
   server.on("/servo/closed",positionClose);
   server.on("/servo/open", positionOpen);
   server.on("/servo/manual", HTTP_GET, []() {
     if (server.hasArg("degree")) {
-      int degree = server.arg("degree").toInt(); // Get the degree from query string
-      positionManual(degree);  // Call the open function with the degree value
+      int degree = server.arg("degree").toInt(); 
+      positionManual(degree);  
     } else {
       server.send(400, "text/plain", "Degree not provided");
     }
@@ -160,13 +154,13 @@ void setup() {
   server.on("/servo/setManual", setPositionManual);
   server.on("/servo/setSunTracking", setSunTracking);
   
-  server.begin();  // Start the server
+  server.begin(); 
   Serial.println("HTTP server started");
 
-  myservo.attach(13); // Change the pin if needed
-  myservo.write(90); // Set initial servo position
+  myservo.attach(13); 
+  myservo.write(90); 
 }
 
 void loop() {
-  server.handleClient(); // Handle incoming HTTP requests
+  server.handleClient();
 }
