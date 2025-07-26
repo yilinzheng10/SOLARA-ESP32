@@ -6,10 +6,12 @@
 #include <Ticker.h>
 
 Ticker sunTrackingTicker; 
-const char* ssid = "ATTItaAPVc";
-const char* password = "t88vj3bfkfnv";
+const char* ssid = "JACKAL-LINKSYS-2.4";
+const char* password = "clearpath";
+
 
 WiFiUDP udp;
+
 NTPClient timeClient(udp, "pool.ntp.org", 0, 3600); // 3600 is for GMT+1, adjust if needed
 const long timeOffset = -6 * 3600;  // CST (Standard Time)
 const long dstOffset = -5 * 3600; 
@@ -30,6 +32,7 @@ void startSunTracking() {
 
 void stopSunTracking() {
   sunTrackingTicker.detach(); 
+}
 
 // Root route handler
 void handleRoot() {
@@ -74,7 +77,8 @@ void setPositionManual() {
 
 void setSunTracking() {
   currentMode = "Sun Tracking";
-  startSunTracking();
+  // updateSunPosition();
+  // startSunTracking();
   server.send(200, "text/plain", "Servo is automatic");
 }
 
@@ -90,31 +94,48 @@ void getCurrentDegree() {
 }
 
 int calculateSunPosition() {
-  unsigned long epochTime = timeClient.getEpochTime();
+  if (timeClient.update()) {
+    unsigned long epochTime = timeClient.getEpochTime();
 
-  time_t time = (time_t)epochTime;
-  struct tm* timeinfo = localtime(&time); 
-  int hour = timeinfo->tm_hour;
-  int minute = timeinfo->tm_min;
+    time_t time = (time_t)epochTime;
+    struct tm* timeinfo = localtime(&time); 
+    int hour = timeinfo->tm_hour;
+    int minute = timeinfo->tm_min;
+    Serial.println(hour);
+    Serial.println(minute);
+  
+  // unsigned long epochTime = timeClient.getEpochTime();
 
-  const int totalMinutesInDay = 12 * 60; // 720 minutes (6 AM to 6 PM)
-  int currentMinutesInDay = (hour - 6) * 60 + minute;
+  // time_t time = (time_t)epochTime;
+  // struct tm* timeinfo = localtime(&time); 
+  // int hour = timeinfo->tm_hour;
+  // int minute = timeinfo->tm_min;
+  // Serial.println(hour);
+  // Serial.println(minute);
 
-  if (currentMinutesInDay < 0) currentMinutesInDay = 0;
-  if (currentMinutesInDay > totalMinutesInDay) currentMinutesInDay = totalMinutesInDay;
+    const int totalMinutesInDay = 12 * 60; // 720 minutes (6 AM to 6 PM)
+    int currentMinutesInDay = (hour - 6) * 60 + minute;
 
-  const float minDegree = 30.0;
-  const float maxDegree = 150.0;
-  float degreeRange = maxDegree - minDegree;
-  float degreeIncrement = (degreeRange / totalMinutesInDay) * currentMinutesInDay;
+    if (currentMinutesInDay < 0) currentMinutesInDay = 0;
+    if (currentMinutesInDay > totalMinutesInDay) currentMinutesInDay = totalMinutesInDay;
 
-  return round(minDegree + degreeIncrement);
+    const float minDegree = 30.0;
+    const float maxDegree = 150.0;
+    float degreeRange = maxDegree - minDegree;
+    float degreeIncrement = (degreeRange / totalMinutesInDay) * currentMinutesInDay;
+
+    Serial.println(round(minDegree + degreeIncrement));
+    return round(minDegree + degreeIncrement);
+  } else {
+    Serial.println("Failed to update time.");
+  }
 }
 
 
 void updateSunPosition() {
   if (currentMode == "Sun Tracking") {
     int position = calculateSunPosition();
+    Serial.println(position);
     myservo.write(position); 
     currentDegree = position;
   }
