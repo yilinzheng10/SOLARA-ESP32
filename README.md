@@ -14,11 +14,3 @@ Double click the .ino file.
 
 Connect your ESP32 via USB-C to your computer and then upload the script using ARDUINO IDE.
 
-To connect with your phone both devices must be on the same network. 
-
-Change lines 9 and 10 with your network credentials.
-
-Example:
-
-    const char* ssid = "YOUR_NETWORK'S_NAME";
-    const char* password = "YOUR_NETWORK'S_PASSWORD";
