@@ -369,6 +369,7 @@ void readINA226() {
   
   // Read current
   int16_t currentRaw = (int16_t)readRegister(INA226_REG_CURRENT);
+  Serial.println(currentRaw);
   float currentLSB = MAX_CURRENT / 32768.0;
   current = currentRaw * currentLSB; // Current in Amps
   
@@ -401,85 +402,85 @@ void printMeasurements() {
   int minutes = (runtime % 3600) / 60;
   int seconds = runtime % 60;
   
-  // Clear previous output (optional - comment out if you want scrolling data)
-  // Serial.print("\033[2J\033[H");
+  //Clear previous output (optional - comment out if you want scrolling data)
+  Serial.print("\033[2J\033[H");
   
-  // Serial.println("=== Solar Panel Real-Time Data ===");
-  // Serial.print("Runtime: ");
-  // Serial.printf("%02d:%02d:%02d\n", hours, minutes, seconds);
-  // Serial.println();
+  Serial.println("=== Solar Panel Real-Time Data ===");
+  Serial.print("Runtime: ");
+  Serial.printf("%02d:%02d:%02d\n", hours, minutes, seconds);
+  Serial.println();
   
-  // Serial.print("🔋 Voltage:  ");
-  // Serial.print(voltage, 3);
-  // Serial.println(" V");
+  Serial.print("🔋 Voltage:  ");
+  Serial.print(voltage, 3);
+  Serial.println(" V");
   
-  // Serial.print("⚡ Current:  ");
-  // Serial.print(current, 3);
-  // Serial.println(" A");
+  Serial.print("⚡ Current:  ");
+  Serial.print(current, 3);
+  Serial.println(" A");
   
-  // Serial.print("💡 Power:    ");
-  // Serial.print(power, 3);
-  // Serial.println(" W");
+  Serial.print("💡 Power:    ");
+  Serial.print(power, 3);
+  Serial.println(" W");
   
-  // Serial.print("📊 Energy:   ");
-  // Serial.print(energy, 4);
-  // Serial.println(" Wh");
+  Serial.print("📊 Energy:   ");
+  Serial.print(energy, 4);
+  Serial.println(" Wh");
   
-  // // LED Diagnostics
-  // Serial.println();
-  // Serial.println("--- LED Diagnostics ---");
-  // if (voltage < 1.8) {
-  //   Serial.println("⚠ Voltage too low for any LED");
-  //   Serial.println("  → Try brighter light on solar panel");
-  // } else if (voltage < 2.2) {
-  //   Serial.println("✓ Voltage OK for RED LED only");
-  // } else if (voltage < 3.0) {
-  //   Serial.println("✓ Voltage OK for RED/GREEN/YELLOW LEDs");
-  // } else {
-  //   Serial.println("✓ Voltage OK for all LED colors");
-  // }
+  // LED Diagnostics
+  Serial.println();
+  Serial.println("--- LED Diagnostics ---");
+  if (voltage < 1.8) {
+    Serial.println("⚠ Voltage too low for any LED");
+    Serial.println("  → Try brighter light on solar panel");
+  } else if (voltage < 2.2) {
+    Serial.println("✓ Voltage OK for RED LED only");
+  } else if (voltage < 3.0) {
+    Serial.println("✓ Voltage OK for RED/GREEN/YELLOW LEDs");
+  } else {
+    Serial.println("✓ Voltage OK for all LED colors");
+  }
   
-  // if (current < 0.001) {
-  //   Serial.println("⚠ No current flow - check connections");
-  //   Serial.println("  → Verify LED polarity (long leg = +)");
-  //   Serial.println("  → Try LED without resistor first");
-  // } else if (current < 0.005) {
-  //   Serial.println("⚠ Very low current (<5mA) - LED won't light");
-  //   Serial.println("  → Solar panel may be too weak");
-  // } else if (current < 0.015) {
-  //   Serial.println("⚠ Low current (5-15mA) - LED may be very dim");
-  // } else {
-  //   Serial.println("✓ Good current flow (>15mA)");
-  // }
+  if (current < 0.001) {
+    Serial.println("⚠ No current flow - check connections");
+    Serial.println("  → Verify LED polarity (long leg = +)");
+    Serial.println("  → Try LED without resistor first");
+  } else if (current < 0.005) {
+    Serial.println("⚠ Very low current (<5mA) - LED won't light");
+    Serial.println("  → Solar panel may be too weak");
+  } else if (current < 0.015) {
+    Serial.println("⚠ Low current (5-15mA) - LED may be very dim");
+  } else {
+    Serial.println("✓ Good current flow (>15mA)");
+  }
   
   // Solar panel capability assessment
-  // float estimatedPower = voltage * current * 1000; // in mW
-  // Serial.println();
-  // Serial.print("Solar Panel Assessment: ");
-  // Serial.print(estimatedPower, 1);
-  // Serial.println(" mW available");
+  float estimatedPower = voltage * current * 1000; // in mW
+  Serial.println();
+  Serial.print("Solar Panel Assessment: ");
+  Serial.print(estimatedPower, 1);
+  Serial.println(" mW available");
   
-  // if (estimatedPower < 50) {
-  //   Serial.println("⚠ Solar panel too weak for LED");
-  //   Serial.println("  → Need brighter light or bigger panel");
-  // } else {
-  //   Serial.println("✓ Solar panel should be able to drive LED");
-  // }
+  if (estimatedPower < 50) {
+    Serial.println("⚠ Solar panel too weak for LED");
+    Serial.println("  → Need brighter light or bigger panel");
+  } else {
+    Serial.println("✓ Solar panel should be able to drive LED");
+  }
   
-  // // Performance indicators
-  // Serial.println();
-  // if (power > 0) {
-  //   Serial.print("Status: ✓ GENERATING (");
-  //   if (power > 10) Serial.print("High");
-  //   else if (power > 5) Serial.print("Medium");
-  //   else Serial.print("Low");
-  //   Serial.println(" output)");
-  // } else {
-  //   Serial.println("Status: ⚠ NO OUTPUT");
-  // }
+  // Performance indicators
+  Serial.println();
+  if (power > 0) {
+    Serial.print("Status: ✓ GENERATING (");
+    if (power > 10) Serial.print("High");
+    else if (power > 5) Serial.print("Medium");
+    else Serial.print("Low");
+    Serial.println(" output)");
+  } else {
+    Serial.println("Status: ⚠ NO OUTPUT");
+  }
   
-  // Serial.println("===================================");
-  // Serial.println();
+  Serial.println("===================================");
+  Serial.println();
 }
 
 void writeRegister(uint8_t reg, uint16_t value) {
@@ -528,16 +529,16 @@ void setup() {
     startBLEServer();
   }
 
-  if (initINA226()) {
-    Serial.println("✓ INA226 initialized successfully");
-  } else {
-    Serial.println("✗ Failed to initialize INA226");
-    Serial.println("Check wiring and I2C connections");
-    return;
-  }
+  // if (initINA226()) {
+  //   Serial.println("✓ INA226 initialized successfully");
+  // } else {
+  //   Serial.println("✗ Failed to initialize INA226");
+  //   Serial.println("Check wiring and I2C connections");
+  //   return;
+  // }
 
-  lastTime = millis();
-  startTime = millis();
+  // lastTime = millis();
+  // startTime = millis();
 
   pinMode(2, OUTPUT);
   digitalWrite(2, HIGH);
@@ -548,10 +549,10 @@ void loop() {
     server.handleClient();
   }
 
-  if (millis() - lastTime >= 1000) {
-    readINA226();
-    calculateEnergy();
-    // printMeasurements();
-    lastTime = millis();
-  }
+  // if (millis() - lastTime >= 1000) {
+  //   readINA226();
+  //   calculateEnergy();
+  //   printMeasurements();
+  //   lastTime = millis();
+  // }
 }
