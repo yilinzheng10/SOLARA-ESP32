@@ -24,11 +24,13 @@
 #define INA226_REG_POWER 0x03
 #define INA226_REG_CURRENT 0x04
 #define INA226_REG_CALIBRATION 0x05
-
+#define CURRENT_LSB 0.00005
+#define CALIBRATION 51200
 // Configuration values
 #define INA226_CONFIG_DEFAULT 0x4127  // Default config
-#define SHUNT_RESISTANCE 0.1  // Shunt resistor value in ohms (adjust based on your module)
-#define MAX_CURRENT 3.2768    // Maximum current in Amps
+#define SHUNT_RESISTANCE 0.002  // Shunt resistor value in ohms (adjust based on your module)
+#define MAX_CURRENT 0.5
+
 
 // BLE UUIDs
 #define SERVICE_UUID        "91bad492-b950-4226-aa2b-4ede9fa42f59"
@@ -216,6 +218,38 @@ void requestSunInfo() {
   http.end();
 }
 
+void smoothServoSweep(int startAngle, int midAngle, int endAngle, int delayMs = 90) {
+    // Move from start → mid
+    if (startAngle < midAngle) {
+        for (int pos = startAngle; pos <= midAngle; pos++) {
+            myservo.write(pos);
+            delay(delayMs);
+        }
+    } else {
+        for (int pos = startAngle; pos >= midAngle; pos--) {
+            myservo.write(pos);
+            delay(delayMs);
+        }
+    }
+
+    // Pause briefly at peak
+    delay(300);
+
+    // Move from mid → end
+    if (midAngle < endAngle) {
+        for (int pos = midAngle; pos <= endAngle; pos++) {
+            myservo.write(pos);
+            delay(delayMs);
+        }
+    } else {
+        for (int pos = midAngle; pos >= endAngle; pos--) {
+            myservo.write(pos);
+            delay(delayMs);
+        }
+    }
+}
+
+
 void startWebServer() {
   timeClient.begin();
   timeClient.setTimeOffset(-6 * 3600);
@@ -240,12 +274,29 @@ void startWebServer() {
   server.on("/servo/open", []() {
     stopSunTracking();
     currentMode = "Open";
-    currentDegree = 180;
-    myservo.write(180);
-    server.send(200, "text/plain", "Servo is 180 degrees");
+    currentDegree = 135;
+    myservo.write(135);
+    server.send(200, "text/plain", "Servo is 135 degrees");
     requestSunInfo();
     
   });
+
+  server.on("/wifi/reset", []() {
+    resetWiFiCredentials();
+    server.send(200, "text/plain", "WiFi credentials cleared. BLE provisioning active.");
+  });
+
+  server.on("/servo/demo", []() {
+    stopSunTracking();
+    currentMode = "Demo";
+
+    // Smoothly sweep from 90 -> 135 -> 90
+    smoothServoSweep(90, 130, 90);
+
+    currentDegree = 0; // End position
+    server.send(200, "text/plain", "Servo performed smooth demo sweep");
+  });
+
 
   server.on("/servo/manual", HTTP_GET, []() {
     if (server.hasArg("degree")) {
@@ -353,10 +404,12 @@ bool initINA226() {
   // Calculate calibration value
   // Cal = 0.00512 / (Current_LSB * Rshunt)
   // Current_LSB = Max_Current / 32768
-  float currentLSB = MAX_CURRENT / 32768.0;
-  uint16_t cal = (uint16_t)(0.00512 / (currentLSB * SHUNT_RESISTANCE));
+  // float currentLSB = MAX_CURRENT / 32768.0;
+  // uint16_t cal = (uint16_t)(0.00512 / (currentLSB * SHUNT_RESISTANCE));
   
-  writeRegister(INA226_REG_CALIBRATION, cal);
+
+  
+  writeRegister(INA226_REG_CALIBRATION, CALIBRATION);
   
   delay(100);
   return true;
@@ -370,12 +423,13 @@ void readINA226() {
   // Read current
   int16_t currentRaw = (int16_t)readRegister(INA226_REG_CURRENT);
   Serial.println(currentRaw);
-  float currentLSB = MAX_CURRENT / 32768.0;
-  current = currentRaw * currentLSB; // Current in Amps
+  // float currentLSB = MAX_CURRENT / 32768.0;
+  current = currentRaw * CURRENT_LSB; // amps
+
   
   // Read power (or calculate it)
   uint16_t powerRaw = readRegister(INA226_REG_POWER);
-  float powerLSB = currentLSB * 25;
+  float powerLSB = CURRENT_LSB * 25;
   power = powerRaw * powerLSB; // Power in Watts
   
   // Alternative: calculate power manually
@@ -428,30 +482,30 @@ void printMeasurements() {
   
   // LED Diagnostics
   Serial.println();
-  Serial.println("--- LED Diagnostics ---");
-  if (voltage < 1.8) {
-    Serial.println("⚠ Voltage too low for any LED");
-    Serial.println("  → Try brighter light on solar panel");
-  } else if (voltage < 2.2) {
-    Serial.println("✓ Voltage OK for RED LED only");
-  } else if (voltage < 3.0) {
-    Serial.println("✓ Voltage OK for RED/GREEN/YELLOW LEDs");
-  } else {
-    Serial.println("✓ Voltage OK for all LED colors");
-  }
+  // Serial.println("--- LED Diagnostics ---");
+  // if (voltage < 1.8) {
+  //   Serial.println("⚠ Voltage too low for any LED");
+  //   Serial.println("  → Try brighter light on solar panel");
+  // } else if (voltage < 2.2) {
+  //   Serial.println("✓ Voltage OK for RED LED only");
+  // } else if (voltage < 3.0) {
+  //   Serial.println("✓ Voltage OK for RED/GREEN/YELLOW LEDs");
+  // } else {
+  //   Serial.println("✓ Voltage OK for all LED colors");
+  // }
   
-  if (current < 0.001) {
-    Serial.println("⚠ No current flow - check connections");
-    Serial.println("  → Verify LED polarity (long leg = +)");
-    Serial.println("  → Try LED without resistor first");
-  } else if (current < 0.005) {
-    Serial.println("⚠ Very low current (<5mA) - LED won't light");
-    Serial.println("  → Solar panel may be too weak");
-  } else if (current < 0.015) {
-    Serial.println("⚠ Low current (5-15mA) - LED may be very dim");
-  } else {
-    Serial.println("✓ Good current flow (>15mA)");
-  }
+  // if (current < 0.001) {
+  //   Serial.println("⚠ No current flow - check connections");
+  //   Serial.println("  → Verify LED polarity (long leg = +)");
+  //   Serial.println("  → Try LED without resistor first");
+  // } else if (current < 0.005) {
+  //   Serial.println("⚠ Very low current (<5mA) - LED won't light");
+  //   Serial.println("  → Solar panel may be too weak");
+  // } else if (current < 0.015) {
+  //   Serial.println("⚠ Low current (5-15mA) - LED may be very dim");
+  // } else {
+  //   Serial.println("✓ Good current flow (>15mA)");
+  // }
   
   // Solar panel capability assessment
   float estimatedPower = voltage * current * 1000; // in mW
@@ -460,28 +514,49 @@ void printMeasurements() {
   Serial.print(estimatedPower, 1);
   Serial.println(" mW available");
   
-  if (estimatedPower < 50) {
-    Serial.println("⚠ Solar panel too weak for LED");
-    Serial.println("  → Need brighter light or bigger panel");
-  } else {
-    Serial.println("✓ Solar panel should be able to drive LED");
-  }
+  // if (estimatedPower < 50) {
+  //   Serial.println("⚠ Solar panel too weak for LED");
+  //   Serial.println("  → Need brighter light or bigger panel");
+  // } else {
+  //   Serial.println("✓ Solar panel should be able to drive LED");
+  // }
   
-  // Performance indicators
-  Serial.println();
-  if (power > 0) {
-    Serial.print("Status: ✓ GENERATING (");
-    if (power > 10) Serial.print("High");
-    else if (power > 5) Serial.print("Medium");
-    else Serial.print("Low");
-    Serial.println(" output)");
-  } else {
-    Serial.println("Status: ⚠ NO OUTPUT");
-  }
+  // // Performance indicators
+  // Serial.println();
+  // if (power > 0) {
+  //   Serial.print("Status: ✓ GENERATING (");
+  //   if (power > 10) Serial.print("High");
+  //   else if (power > 5) Serial.print("Medium");
+  //   else Serial.print("Low");
+  //   Serial.println(" output)");
+  // } else {
+  //   Serial.println("Status: ⚠ NO OUTPUT");
+  // }
   
   Serial.println("===================================");
   Serial.println();
 }
+
+void resetWiFiCredentials() {
+  Serial.println("Resetting WiFi credentials...");
+
+  // Erase stored SSID and password
+  preferences.begin("wifi", false);  // write mode
+  preferences.remove("ssid");
+  preferences.remove("password");
+  preferences.end();
+
+  // Disconnect WiFi if currently connected
+  WiFi.disconnect(true);  // erase runtime credentials
+  wifiConnected = false;
+
+  Serial.println("WiFi credentials removed.");
+
+  // Start BLE provisioning again
+  startBLEServer();
+  Serial.println("BLE server started. Ready for new WiFi setup.");
+}
+
 
 void writeRegister(uint8_t reg, uint16_t value) {
   Wire.beginTransmission(INA226_ADDRESS);
@@ -510,35 +585,67 @@ uint16_t readRegister(uint8_t reg) {
 void setup() {
   Serial.begin(115200);
   Wire.begin();
-  preferences.begin("wifi", false);
-  preferences.remove("ssid");
-  preferences.remove("password");
-  preferences.end();
 
-  preferences.begin("wifi", true);
+  // ---- Load stored WiFi credentials ----
+  preferences.begin("wifi", true);   // read-only
   String ssid = preferences.getString("ssid", "");
   String password = preferences.getString("password", "");
   preferences.end();
 
+  Serial.println("Stored SSID: " + ssid);
+
+  // ---- Case 1: We have saved credentials ----
   if (ssid.length() > 0 && password.length() > 0) {
+    Serial.println("Connecting with saved WiFi credentials...");
     connectToWiFi(ssid.c_str(), password.c_str());
+
+    // If connection succeeds, no BLE needed
+    if (wifiConnected) {
+      Serial.println("Connected to WiFi!");
+      pinMode(2, OUTPUT);
+      digitalWrite(2, HIGH);
+      return;
+    }
+
+    Serial.println("Failed to connect with saved WiFi. Starting BLE provisioning...");
   }
 
-  if (!wifiConnected) {
-    Serial.println("BLE server started");
-    startBLEServer();
-  }
+  // ---- Case 2: No saved credentials OR connection failed ----
+  startBLEServer();
+  Serial.println("BLE server started. Waiting for WiFi credentials...");
 
-  // if (initINA226()) {
-  //   Serial.println("✓ INA226 initialized successfully");
-  // } else {
-  //   Serial.println("✗ Failed to initialize INA226");
-  //   Serial.println("Check wiring and I2C connections");
-  //   return;
+
+  // Serial.begin(115200);
+  // Wire.begin();
+  // preferences.begin("wifi", false);
+  // preferences.remove("ssid");
+  // preferences.remove("password");
+  // preferences.end();
+
+  // preferences.begin("wifi", true);
+  // String ssid = preferences.getString("ssid", "");
+  // String password = preferences.getString("password", "");
+  // preferences.end();
+
+  // if (ssid.length() > 0 && password.length() > 0) {
+  //   connectToWiFi(ssid.c_str(), password.c_str());
   // }
 
-  // lastTime = millis();
-  // startTime = millis();
+  // if (!wifiConnected) {
+  //   Serial.println("BLE server started");
+  //   startBLEServer();
+  // }
+
+  // // if (initINA226()) {
+  // //   Serial.println("✓ INA226 initialized successfully");
+  // // } else {
+  // //   Serial.println("✗ Failed to initialize INA226");
+  // //   Serial.println("Check wiring and I2C connections");
+  // //   return;
+  // // }
+
+  // // lastTime = millis();
+  // // startTime = millis();
 
   pinMode(2, OUTPUT);
   digitalWrite(2, HIGH);
