@@ -45,12 +45,14 @@ NTPClient timeClient(udp, "pool.ntp.org", 0, 3600); // Will adjust offset later
 Servo myservo;
 Ticker sunTrackingTicker;
 
+//11/30 update
 String currentMode = "Closed";
 int currentDegree = 90;
 const int minDegree = 0;
 const int maxDegree = 180;
-
 bool wifiConnected = false;
+// Prevent overlapping servo movements (global lock)
+bool servoBusy = false;
 
 // Global variables for measurements
 float voltage = 0;
@@ -59,6 +61,13 @@ float power = 0;
 float energy = 0;
 unsigned long lastTime = 0;
 unsigned long startTime = 0;
+
+//11/27 update smooth movement
+bool manualActive = false;
+int manualTarget = -1;
+unsigned long lastServoStep = 0;
+int servoStepDelay = 12;   // speed
+void smoothMove(int fromDeg, int toDeg, int stepDelay);
 
 BLEServer* pServer = nullptr;
 BLECharacteristic* wifiCredCharacteristic = nullptr;
@@ -262,24 +271,28 @@ void startWebServer() {
     server.send(200, "text/plain", "ESP32 is connected!");
   });
 
-  server.on("/servo/closed", []() {
+ server.on("/servo/closed", []() {
     stopSunTracking();
     currentMode = "Closed";
-    currentDegree = 90;
-    myservo.write(90);
-    Serial.println(currentDegree);
-    server.send(200, "text/plain", "Servo is 90 degrees");
+
+    server.send(200, "text/plain", "Servo is 0 degrees");
+
+    //*** 11/27 update smooth movement
+    int target = 100;
+    smoothMove(currentDegree, target, 15);
+    //**
   });
 
-  server.on("/servo/open", []() {
-    stopSunTracking();
-    currentMode = "Open";
-    currentDegree = 135;
-    myservo.write(135);
-    server.send(200, "text/plain", "Servo is 135 degrees");
-    requestSunInfo();
+
+  //server.on("/servo/open", []() {
+  //  stopSunTracking();
+  //   currentMode = "Open";
+  //   currentDegree = 135;
+  //   myservo.write(135);
+  //   server.send(200, "text/plain", "Servo is 135 degrees");
+  //   requestSunInfo();
     
-  });
+  // });
 
   server.on("/wifi/reset", []() {
     resetWiFiCredentials();
@@ -288,27 +301,33 @@ void startWebServer() {
 
   server.on("/servo/demo", []() {
     stopSunTracking();
-    currentMode = "Demo";
-
-    // Smoothly sweep from 90 -> 135 -> 90
-    smoothServoSweep(90, 130, 90);
-
-    currentDegree = 0; // End position
-    server.send(200, "text/plain", "Servo performed smooth demo sweep");
+    currentMode = "Open";
+    //*** 11/27 update smooth movement
+    int target = 135;
+    smoothMove(currentDegree, target, 15);
+    //**
+    server.send(200, "text/plain", "Servo is 45 degrees");
+    requestSunInfo();
   });
 
 
   server.on("/servo/manual", HTTP_GET, []() {
-    if (server.hasArg("degree")) {
+      if (!server.hasArg("degree")) {
+          server.send(400, "text/plain", "degree missing");
+          return;
+      }
+
       int degree = server.arg("degree").toInt();
       stopSunTracking();
       currentMode = "Manual";
-      myservo.write(degree);
-      currentDegree = degree;
-      server.send(200, "text/plain", "Servo set to " + String(degree));
-    } else {
-      server.send(400, "text/plain", "Degree not provided");
-    }
+
+      // Clamp angle
+      degree = constrain(degree, 0, 180);
+
+      manualTarget = degree;     // SET TARGET, but don't move yet
+      manualActive = true;
+
+      server.send(200, "text/plain", "target set to " + String(degree));
   });
 
   server.on("/servo/apicall", []() {
@@ -414,6 +433,26 @@ bool initINA226() {
   delay(100);
   return true;
 }
+
+//***11/27 update: smooth servo movement***
+void smoothMove(int fromDeg, int toDeg, int stepDelay) {
+  if (servoBusy) return;      // Prevent overlap
+
+  servoBusy = true;           // LOCK servo
+
+  int step = (fromDeg < toDeg) ? 1 : -1;
+  for (int pos = fromDeg; pos != toDeg; pos += step) {
+    myservo.write(pos);
+    delay(stepDelay);
+  }
+
+  myservo.write(toDeg);
+  delay(20);
+
+  currentDegree = toDeg;
+  servoBusy = false;          // UNLOCK servo
+}
+//***
 
 void readINA226() {
   // Read bus voltage (solar panel voltage)
@@ -652,9 +691,29 @@ void setup() {
 }
 
 void loop() {
-  if (wifiConnected) {
-    server.handleClient();
-  }
+    if (wifiConnected) server.handleClient();
+
+    // NON-BLOCKING manual servo motion
+    if (manualActive && manualTarget >= 0) {
+
+        unsigned long now = millis();
+        if (now - lastServoStep >= servoStepDelay) {
+
+            lastServoStep = now;
+
+            if (currentDegree < manualTarget) {
+                currentDegree++;
+                myservo.write(currentDegree);
+            } 
+            else if (currentDegree > manualTarget) {
+                currentDegree--;
+                myservo.write(currentDegree);
+            }
+            else {
+                manualActive = false;  // reached target
+            }
+        }
+    }
 
   // if (millis() - lastTime >= 1000) {
   //   readINA226();
