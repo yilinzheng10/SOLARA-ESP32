@@ -636,16 +636,16 @@ void setup() {
   //   startBLEServer();
   // }
 
-  // // if (initINA226()) {
-  // //   Serial.println("✓ INA226 initialized successfully");
-  // // } else {
-  // //   Serial.println("✗ Failed to initialize INA226");
-  // //   Serial.println("Check wiring and I2C connections");
-  // //   return;
-  // // }
+  if (initINA226()) {
+    Serial.println("✓ INA226 initialized successfully");
+  } else {
+    Serial.println("✗ Failed to initialize INA226");
+    Serial.println("Check wiring and I2C connections");
+    return;
+  }
 
-  // // lastTime = millis();
-  // // startTime = millis();
+  lastTime = millis();
+  startTime = millis();
 
   pinMode(2, OUTPUT);
   digitalWrite(2, HIGH);
@@ -656,10 +656,10 @@ void loop() {
     server.handleClient();
   }
 
-  // if (millis() - lastTime >= 1000) {
-  //   readINA226();
-  //   calculateEnergy();
-  //   printMeasurements();
-  //   lastTime = millis();
-  // }
+  if (millis() - lastTime >= 1000) {
+    readINA226();
+    calculateEnergy();
+    printMeasurements();
+    lastTime = millis();
+  }
 }
