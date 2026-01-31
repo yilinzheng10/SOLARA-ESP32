@@ -54,6 +54,16 @@ bool wifiConnected = false;
 // Prevent overlapping servo movements (global lock)
 bool servoBusy = false;
 
+// Manual mode state machine
+unsigned long lastManualStep = 0;
+const int manualStepDelay = 12; // ms per degree
+
+// String currentMode = "Closed";
+// int currentDegree = 90;
+// const int minDegree = 0;
+// const int maxDegree = 180;
+// bool wifiConnected = false;
+
 // Global variables for measurements
 float voltage = 0;
 float current = 0;
@@ -63,10 +73,12 @@ unsigned long lastTime = 0;
 unsigned long startTime = 0;
 
 //11/27 update smooth movement
+//manual
 bool manualActive = false;
 int manualTarget = -1;
-unsigned long lastServoStep = 0;
-int servoStepDelay = 12;   // speed
+unsigned long lastManualCmdTime = 0;
+const int manualDeadband = 2;         // ignore <2° change
+const unsigned long manualMinInterval = 80; // ms between commands
 void smoothMove(int fromDeg, int toDeg, int stepDelay);
 
 BLEServer* pServer = nullptr;
@@ -271,8 +283,18 @@ void startWebServer() {
     server.send(200, "text/plain", "ESP32 is connected!");
   });
 
+  // server.on("/servo/closed", []() {
+  //   stopSunTracking();
+  //   currentMode = "Closed";
+  //   currentDegree = 90;
+  //   myservo.write(90);
+  //   Serial.println(currentDegree);
+  //   server.send(200, "text/plain", "Servo is 90 degrees");
+  // });
+
  server.on("/servo/closed", []() {
     stopSunTracking();
+    manualActive = false;  
     currentMode = "Closed";
 
     server.send(200, "text/plain", "Servo is 0 degrees");
@@ -283,9 +305,8 @@ void startWebServer() {
     //**
   });
 
-
-  //server.on("/servo/open", []() {
-  //  stopSunTracking();
+  // server.on("/servo/open", []() {
+  //   stopSunTracking();
   //   currentMode = "Open";
   //   currentDegree = 135;
   //   myservo.write(135);
@@ -299,8 +320,20 @@ void startWebServer() {
     server.send(200, "text/plain", "WiFi credentials cleared. BLE provisioning active.");
   });
 
-  server.on("/servo/demo", []() {
+  // server.on("/servo/demo", []() {
+  //   stopSunTracking();
+  //   currentMode = "Demo";
+
+  //   // Smoothly sweep from 90 -> 135 -> 90
+  //   smoothServoSweep(90, 130, 90);
+
+  //   currentDegree = 0; // End position
+  //   server.send(200, "text/plain", "Servo performed smooth demo sweep");
+  // });
+
+    server.on("/servo/demo", []() {
     stopSunTracking();
+    manualActive = false;  
     currentMode = "Open";
     //*** 11/27 update smooth movement
     int target = 135;
@@ -310,25 +343,52 @@ void startWebServer() {
     requestSunInfo();
   });
 
+  // server.on("/servo/manual", HTTP_GET, []() {
+  //   if (server.hasArg("degree")) {
+  //     int degree = server.arg("degree").toInt();
+  //     stopSunTracking();
+  //     currentMode = "Manual";
+  //     myservo.write(degree);
+  //     currentDegree = degree;
+  //     server.send(200, "text/plain", "Servo set to " + String(degree));
+  //   } else {
+  //     server.send(400, "text/plain", "Degree not provided");
+  //   }
+  // });
 
-  server.on("/servo/manual", HTTP_GET, []() {
-      if (!server.hasArg("degree")) {
-          server.send(400, "text/plain", "degree missing");
-          return;
-      }
+    server.on("/servo/manual", HTTP_GET, []() {
+    if (!server.hasArg("degree")) {
+        server.send(400, "text/plain", "degree missing");
+        return;
+    }
 
-      int degree = server.arg("degree").toInt();
-      stopSunTracking();
-      currentMode = "Manual";
+    int degree = server.arg("degree").toInt();
+    degree = constrain(degree, 0, 180);
 
-      // Clamp angle
-      degree = constrain(degree, 0, 180);
+    stopSunTracking();
+    currentMode = "Manual";
 
-      manualTarget = degree;     // SET TARGET, but don't move yet
-      manualActive = true;
+    unsigned long now = millis();
 
-      server.send(200, "text/plain", "target set to " + String(degree));
-  });
+    // 1) Debounce: ignore too frequent updates
+    if (now - lastManualCmdTime < manualMinInterval) {
+        server.send(200, "text/plain", "ignored (too fast)");
+        return;
+    }
+    lastManualCmdTime = now;
+
+    // 2) Deadband: ignore tiny changes
+    if (abs(degree - currentDegree) < manualDeadband) {
+        server.send(200, "text/plain", "ignored (within deadband)");
+        return;
+    }
+
+    // 3) Set smooth-move target
+    manualTarget = degree;
+    manualActive = true;
+
+    server.send(200, "text/plain", "target set to " + String(degree));
+});
 
   server.on("/servo/apicall", []() {
     requestSunInfo();
@@ -653,7 +713,7 @@ void setup() {
   startBLEServer();
   Serial.println("BLE server started. Waiting for WiFi credentials...");
 
-
+  //****INA226
   // Serial.begin(115200);
   // Wire.begin();
   // preferences.begin("wifi", false);
@@ -675,50 +735,52 @@ void setup() {
   //   startBLEServer();
   // }
 
-  if (initINA226()) {
-    Serial.println("✓ INA226 initialized successfully");
-  } else {
-    Serial.println("✗ Failed to initialize INA226");
-    Serial.println("Check wiring and I2C connections");
-    return;
-  }
+  // if (initINA226()) {
+  //   Serial.println("✓ INA226 initialized successfully");
+  // } else {
+  //   Serial.println("✗ Failed to initialize INA226");
+  //   Serial.println("Check wiring and I2C connections");
+  //   return;
+  // }
 
-  lastTime = millis();
-  startTime = millis();
+  // lastTime = millis();
+  // startTime = millis();
+  //****
 
   pinMode(2, OUTPUT);
   digitalWrite(2, HIGH);
 }
 
 void loop() {
-    if (wifiConnected) server.handleClient();
+  if (wifiConnected) {
+    server.handleClient();
+  }
 
-    // NON-BLOCKING manual servo motion
-    if (manualActive && manualTarget >= 0) {
-
-        unsigned long now = millis();
-        if (now - lastServoStep >= servoStepDelay) {
-
-            lastServoStep = now;
-
-            if (currentDegree < manualTarget) {
-                currentDegree++;
-                myservo.write(currentDegree);
-            } 
-            else if (currentDegree > manualTarget) {
-                currentDegree--;
-                myservo.write(currentDegree);
-            }
-            else {
-                manualActive = false;  // reached target
-            }
-        }
+  // Handle smooth manual move in the background
+  if (manualActive) {
+    unsigned long now = millis();
+    if (now - lastManualStep >= manualStepDelay) {
+      if (currentDegree != manualTarget) {
+        int step = (manualTarget > currentDegree) ? 1 : -1;
+        currentDegree += step;
+        myservo.write(currentDegree);
+      } else {
+        manualActive = false; // reached target
+      }
+      lastManualStep = now;
     }
+  }
 
-  if (millis() - lastTime >= 1000) {
+//****INA226
+  if (millis() - lastTime >= 60000) {
     readINA226();
     calculateEnergy();
     printMeasurements();
     lastTime = millis();
   }
+//***
 }
+
+// manual reset wifi if it is not cleared from device
+// http://ip address/wifi/reset
+
